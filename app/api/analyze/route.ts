@@ -1,0 +1,107 @@
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
+type GlmMessageContent = string | Array<{
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: { url: string };
+}>;
+
+async function callGlm(model: string, content: GlmMessageContent, system: string) {
+  const keys = [process.env.GLM_API_KEY, process.env.GLM_API_KEY_BACKUP].filter(Boolean) as string[];
+  if (!keys.length) return null;
+
+  let lastError = "AI 服务请求失败";
+  for (const key of keys) {
+    try {
+      const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          temperature: 0.75,
+          max_tokens: 600,
+          thinking: { type: "disabled" },
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content },
+          ],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        lastError = data?.error?.message ?? `AI 服务返回 ${response.status}`;
+        continue;
+      }
+      const result = data?.choices?.[0]?.message?.content;
+      if (typeof result === "string" && result.trim()) return result.trim();
+      lastError = "AI 服务没有返回有效内容";
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : lastError;
+    }
+  }
+  throw new Error(lastError);
+}
+
+function localTextAnalysis(title: string, body: string) {
+  const text = `${title}${body}`;
+  if (/塑料|垃圾|油膜|污染/.test(text)) {
+    return "这段记录让一种常被忽略的海洋压力变得具体：陆地生活、航运和渔业产生的污染物，会沿河流与洋流进入更远的海域。单次观察无法确认完整来源，但时间、坐标和照片能帮助后续追踪。持续留下这样的第一手记录，会让污染不再只是一个抽象数字。";
+  }
+  if (/珊瑚|暖流|水温|白化/.test(text)) {
+    return "你观察到的水温与生态变化值得持续记录。海水长时间异常偏暖会给珊瑚和近岸生态系统带来压力，而沿岸污染、过度捕捞等人类活动又可能削弱它们的恢复能力。一次见闻不能代替长期监测，但水手跨海域的连续记录能补上非常珍贵的现场细节。";
+  }
+  if (/风暴|台风|巨浪|极端/.test(text)) {
+    return "强风暴本身是自然系统的一部分，单次事件也不能直接归因于全球变暖。不过，更暖的海洋和大气能为部分极端天气提供更多能量与水汽。把位置、时间、风速、气压和浪高一起记下，会让这段经历成为更有价值的长期观察。";
+  }
+  return "这是一份很有现场感的海上观察。海洋变化往往不是由单一因素造成的，自然周期、气候背景与沿岸人类活动可能同时发挥作用。你的记录最珍贵之处，是保留了具体时间、地点与个人感受；如果未来再次经过同一片海域，不妨继续对照记录变化。";
+}
+
+function localImageAnalysis() {
+  return "影像保留了当时海况、能见度与海面状态等线索。仅凭照片还不能确定现象的成因，但将画面与拍摄位置、时间、水温及天气记录结合，就能更好地区分自然波动和人类活动带来的长期压力。建议后续在相近位置持续拍摄，形成可比较的影像序列。";
+}
+
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+    const title = String(formData.get("title") ?? "").trim();
+    const body = String(formData.get("body") ?? "").trim();
+    const analyzeImages = formData.get("analyzeImages") === "true";
+    const images = formData.getAll("images").filter((item): item is File => item instanceof File);
+    if (!title || !body) return NextResponse.json({ error: "故事内容不能为空" }, { status: 400 });
+
+    const textSystem = "你是 OceanArchive 的海洋观察编辑。请用中文回应一位青年帆船水手的航海记录：识别其中可能涉及的自然现象，谨慎解释它与气候变化或人类活动的可能关系；不要把单次观察武断归因，不要分点，不要使用套话，以自然、有温度但专业克制的 120-220 字短评输出。";
+    const imageSystem = "你是 OceanArchive 的海洋影像分析员。请用中文分析水手上传的照片：只描述确实可见的自然或污染现象，谨慎解释与人类活动的可能联系；不确定时明确说明限制，不要虚构地点与物种，不要分点，以 120-220 字自然短评输出。";
+
+    const textPromise = callGlm(
+      process.env.GLM_TEXT_MODEL ?? "glm-5.2",
+      `标题：${title}\n航海记录：${body}`,
+      textSystem,
+    );
+
+    let imagePromise: Promise<string | null> = Promise.resolve(null);
+    if (analyzeImages && images.length) {
+      const imageContent: Exclude<GlmMessageContent, string> = [
+        { type: "text", text: "请分析这些航海照片中的自然现象或人为环境影响。" },
+      ];
+      for (const file of images.slice(0, 3)) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        imageContent.push({ type: "image_url", image_url: { url: `data:${file.type};base64,${buffer.toString("base64")}` } });
+      }
+      imagePromise = callGlm(process.env.GLM_VISION_MODEL ?? "glm-5v-turbo", imageContent, imageSystem);
+    }
+
+    const [textResult, imageResult] = await Promise.all([textPromise, imagePromise]);
+    return NextResponse.json({
+      textAnalysis: textResult ?? localTextAnalysis(title, body),
+      imageAnalysis: analyzeImages ? imageResult ?? localImageAnalysis() : undefined,
+      mode: textResult ? "glm" : "local-preview",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "AI 分析暂时不可用" },
+      { status: 502 },
+    );
+  }
+}
