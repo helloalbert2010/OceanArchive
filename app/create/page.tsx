@@ -10,6 +10,20 @@ import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from 
 const MAX_IMAGES = 3;
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 
+async function compressForAnalysis(file: File) {
+  const bitmap = await createImageBitmap(file);
+  const maxDimension = 1600;
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("图片压缩失败")), "image/jpeg", 0.78);
+  });
+}
+
 export default function CreatePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -60,7 +74,10 @@ export default function CreatePage() {
       formData.set("title", title.trim());
       formData.set("body", body.trim());
       formData.set("analyzeImages", String(analyzeImages));
-      if (analyzeImages) images.forEach((image) => formData.append("images", image));
+      if (analyzeImages) {
+        const compressed = await Promise.all(images.map(compressForAnalysis));
+        compressed.forEach((image, index) => formData.append("images", image, `${images[index].name}.jpg`));
+      }
 
       const response = await fetch("/api/analyze", { method: "POST", body: formData });
       const result = await response.json();

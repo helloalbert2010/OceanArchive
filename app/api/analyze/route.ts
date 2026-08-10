@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type GlmMessageContent = string | Array<{
   type: "text" | "image_url";
@@ -8,8 +9,21 @@ type GlmMessageContent = string | Array<{
   image_url?: { url: string };
 }>;
 
+function cleanEnvValue(value: string | undefined) {
+  return value?.trim().replace(/^['"]|['"]$/g, "");
+}
+
+function normalizeModel(value: string | undefined, fallback: string) {
+  const model = (cleanEnvValue(value) || fallback).toLowerCase().replace(/\s+/g, "");
+  if (model === "glm5.2" || model === "glm-5-2") return "glm-5.2";
+  if (model === "glm5v-turbo" || model === "glm-5-v-turbo") return "glm-5v-turbo";
+  return model;
+}
+
 async function callGlm(model: string, content: GlmMessageContent, system: string) {
-  const keys = [process.env.GLM_API_KEY, process.env.GLM_API_KEY_BACKUP].filter(Boolean) as string[];
+  const keys = [process.env.GLM_API_KEY, process.env.GLM_API_KEY_BACKUP]
+    .map(cleanEnvValue)
+    .filter(Boolean) as string[];
   if (!keys.length) return null;
 
   let lastError = "AI 服务请求失败";
@@ -34,8 +48,13 @@ async function callGlm(model: string, content: GlmMessageContent, system: string
         lastError = data?.error?.message ?? `AI 服务返回 ${response.status}`;
         continue;
       }
-      const result = data?.choices?.[0]?.message?.content;
-      if (typeof result === "string" && result.trim()) return result.trim();
+      const rawResult = data?.choices?.[0]?.message?.content;
+      const result = typeof rawResult === "string"
+        ? rawResult
+        : Array.isArray(rawResult)
+          ? rawResult.map((item: { type?: string; text?: string }) => item.text ?? "").join("")
+          : "";
+      if (result.trim()) return result.trim();
       lastError = "AI 服务没有返回有效内容";
     } catch (error) {
       lastError = error instanceof Error ? error.message : lastError;
@@ -75,7 +94,7 @@ export async function POST(request: Request) {
     const imageSystem = "你是 OceanArchive 的海洋影像分析员。请用中文分析水手上传的照片：只描述确实可见的自然或污染现象，谨慎解释与人类活动的可能联系；不确定时明确说明限制，不要虚构地点与物种，不要分点，以 120-220 字自然短评输出。";
 
     const textPromise = callGlm(
-      process.env.GLM_TEXT_MODEL ?? "glm-5.2",
+      normalizeModel(process.env.GLM_TEXT_MODEL, "glm-5.2"),
       `标题：${title}\n航海记录：${body}`,
       textSystem,
     );
@@ -89,14 +108,26 @@ export async function POST(request: Request) {
         const buffer = Buffer.from(await file.arrayBuffer());
         imageContent.push({ type: "image_url", image_url: { url: `data:${file.type};base64,${buffer.toString("base64")}` } });
       }
-      imagePromise = callGlm(process.env.GLM_VISION_MODEL ?? "glm-5v-turbo", imageContent, imageSystem);
+      imagePromise = callGlm(normalizeModel(process.env.GLM_VISION_MODEL, "glm-5v-turbo"), imageContent, imageSystem);
     }
 
-    const [textResult, imageResult] = await Promise.all([textPromise, imagePromise]);
+    const [textOutcome, imageOutcome] = await Promise.allSettled([textPromise, imagePromise]);
+    const textResult = textOutcome.status === "fulfilled" ? textOutcome.value : null;
+    const imageResult = imageOutcome.status === "fulfilled" ? imageOutcome.value : null;
+    if (textOutcome.status === "rejected") {
+      console.error("[OceanArchive] GLM text analysis failed", textOutcome.reason);
+    }
+    if (imageOutcome.status === "rejected") {
+      console.error("[OceanArchive] GLM vision analysis failed", imageOutcome.reason);
+    }
     return NextResponse.json({
       textAnalysis: textResult ?? localTextAnalysis(title, body),
       imageAnalysis: analyzeImages ? imageResult ?? localImageAnalysis() : undefined,
-      mode: textResult ? "glm" : "local-preview",
+      mode: textResult || imageResult ? "glm" : "local-preview",
+      warnings: [
+        textOutcome.status === "rejected" ? "文本分析暂时使用本地解读" : null,
+        analyzeImages && imageOutcome.status === "rejected" ? "图片分析暂时使用本地解读" : null,
+      ].filter(Boolean),
     });
   } catch (error) {
     return NextResponse.json(
