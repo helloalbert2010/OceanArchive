@@ -1,6 +1,6 @@
 # OceanArchive
 
-面向青年帆船水手的海洋观察分享平台。项目包含公开故事流、独立详情页、评论与点赞、最多三张图片的发布流程、GLM 文本/图片分析，以及单一管理员删除入口。
+面向青年帆船水手的海洋观察分享平台。项目包含公开故事流、独立详情页、评论与点赞、最多三张图片的发布流程、GLM 图文综合分析，以及单一管理员删除入口。每篇故事只生成一条 AI 评论：有图时综合正文与全部图片，无图时分析正文。
 
 ## 本地运行
 
@@ -19,6 +19,7 @@ npm run dev
 
 1. 在 Supabase 新建项目。
 2. 在 SQL Editor 运行 `supabase/migrations/001_schema.sql`。
+   已有项目还需运行 `supabase/migrations/002_merge_ai_analysis.sql`，将旧帖的两段 AI 分析合并为一条。
 3. 运行 `supabase/seed.sql` 写入 30 条故事与评论。
 4. 将项目 URL、anon key 和 service role key 填入 `.env.local`。
 5. 重启开发服务器。

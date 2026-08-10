@@ -2,7 +2,7 @@
 
 import { createPost } from "@/lib/store";
 import type { CreatePostInput } from "@/lib/types";
-import { ArrowLeft, Check, ImagePlus, LoaderCircle, Send, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ImagePlus, LoaderCircle, Send, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
@@ -30,7 +30,6 @@ export default function CreatePage() {
   const [author, setAuthor] = useState("");
   const [body, setBody] = useState("");
   const [images, setImages] = useState<File[]>([]);
-  const [analyzeImages, setAnalyzeImages] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [stage, setStage] = useState<"idle" | "analyzing" | "saving">("idle");
@@ -62,19 +61,13 @@ export default function CreatePage() {
       setError("请填写标题、昵称和故事正文。");
       return;
     }
-    if (analyzeImages && images.length === 0) {
-      setError("请先上传图片，或关闭图片分析。");
-      return;
-    }
-
     setError("");
     setStage("analyzing");
     try {
       const formData = new FormData();
       formData.set("title", title.trim());
       formData.set("body", body.trim());
-      formData.set("analyzeImages", String(analyzeImages));
-      if (analyzeImages) {
+      if (images.length) {
         const compressed = await Promise.all(images.map(compressForAnalysis));
         compressed.forEach((image, index) => formData.append("images", image, `${images[index].name}.jpg`));
       }
@@ -89,7 +82,6 @@ export default function CreatePage() {
         title: title.trim(),
         body: body.trim(),
         images,
-        analyzeImages,
       };
       const post = await createPost(input, result);
       router.push(`/post/${post.id}`);
@@ -164,11 +156,10 @@ export default function CreatePage() {
             </div>
           )}
 
-          <label className="ai-toggle">
-            <input type="checkbox" checked={analyzeImages} onChange={(event) => setAnalyzeImages(event.target.checked)} />
-            <span className="toggle-track"><span><Check /></span></span>
-            <span className="toggle-copy"><strong><Sparkles /> AI 分析图片</strong><small>识别影像中的自然现象，并解释它与人类活动的可能关系。</small></span>
-          </label>
+          <div className="ai-toggle ai-summary-note">
+            <span className="ai-note-icon"><Sparkles /></span>
+            <span className="toggle-copy"><strong>AI 综合分析</strong><small>发布后，AI 会结合故事与全部影像生成一条综合评论；没有图片时则基于故事内容分析。</small></span>
+          </div>
 
           {error && <div className="form-error">{error}</div>}
           <div className="form-submit-row">

@@ -81,53 +81,51 @@ function localImageAnalysis() {
   return "影像保留了当时海况、能见度与海面状态等线索。仅凭照片还不能确定现象的成因，但将画面与拍摄位置、时间、水温及天气记录结合，就能更好地区分自然波动和人类活动带来的长期压力。建议后续在相近位置持续拍摄，形成可比较的影像序列。";
 }
 
+function localCombinedAnalysis(title: string, body: string, hasImages: boolean) {
+  const text = localTextAnalysis(title, body);
+  if (!hasImages) return text;
+  return `${text} 你上传的影像也会作为这份观察的一部分：请将画面中的可见线索与拍摄时间、位置和天气一并记录，单张照片可以提示现象，但不能单独确定成因。`;
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const title = String(formData.get("title") ?? "").trim();
     const body = String(formData.get("body") ?? "").trim();
-    const analyzeImages = formData.get("analyzeImages") === "true";
     const images = formData.getAll("images").filter((item): item is File => item instanceof File);
     if (!title || !body) return NextResponse.json({ error: "故事内容不能为空" }, { status: 400 });
 
-    const textSystem = "你是 OceanArchive 的海洋观察编辑。请用中文回应一位青年帆船水手的航海记录：识别其中可能涉及的自然现象，谨慎解释它与气候变化或人类活动的可能关系；不要把单次观察武断归因，不要分点，不要使用套话，以自然、有温度但专业克制的 120-220 字短评输出。";
-    const imageSystem = "你是 OceanArchive 的海洋影像分析员。请用中文分析水手上传的照片：只描述确实可见的自然或污染现象，谨慎解释与人类活动的可能联系；不确定时明确说明限制，不要虚构地点与物种，不要分点，以 120-220 字自然短评输出。";
+    const hasImages = images.length > 0;
+    const system = hasImages
+      ? "你是 OceanArchive 的海洋观察编辑。请只输出一条中文短评，必须同时结合水手的标题、正文和全部上传影像：先描述图片中确实可见的自然现象或人为影响，再联系文字中的现场感受，谨慎解释它与气候变化或人类活动的可能关系。不要把单次观察武断归因，不要分点，不要提及自己是模型，不要虚构地点与物种，以自然、有温度但专业克制的 140-260 字输出。"
+      : "你是 OceanArchive 的海洋观察编辑。请只输出一条中文短评，结合水手的标题和正文识别可能涉及的自然现象，谨慎解释它与气候变化或人类活动的可能关系。不要把单次观察武断归因，不要分点，不要提及自己是模型，以自然、有温度但专业克制的 120-220 字输出。";
 
-    const textPromise = callGlm(
-      normalizeModel(process.env.GLM_TEXT_MODEL, "glm-5.2"),
-      `标题：${title}\n航海记录：${body}`,
-      textSystem,
-    );
-
-    let imagePromise: Promise<string | null> = Promise.resolve(null);
-    if (analyzeImages && images.length) {
-      const imageContent: Exclude<GlmMessageContent, string> = [
-        { type: "text", text: "请分析这些航海照片中的自然现象或人为环境影响。" },
-      ];
-      for (const file of images.slice(0, 3)) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        imageContent.push({ type: "image_url", image_url: { url: `data:${file.type};base64,${buffer.toString("base64")}` } });
+    let aiResult: string | null = null;
+    try {
+      if (hasImages) {
+        const imageContent: Exclude<GlmMessageContent, string> = [
+          { type: "text", text: `标题：${title}\n航海记录：${body}\n\n请结合正文和这些图片，生成唯一的一条综合评论。` },
+        ];
+        for (const file of images.slice(0, 3)) {
+          const buffer = Buffer.from(await file.arrayBuffer());
+          imageContent.push({ type: "image_url", image_url: { url: `data:${file.type};base64,${buffer.toString("base64")}` } });
+        }
+        aiResult = await callGlm(normalizeModel(process.env.GLM_VISION_MODEL, "glm-5v-turbo"), imageContent, system);
+      } else {
+        aiResult = await callGlm(
+          normalizeModel(process.env.GLM_TEXT_MODEL, "glm-5.2"),
+          `标题：${title}\n航海记录：${body}`,
+          system,
+        );
       }
-      imagePromise = callGlm(normalizeModel(process.env.GLM_VISION_MODEL, "glm-5v-turbo"), imageContent, imageSystem);
+    } catch (analysisError) {
+      console.error(`[OceanArchive] GLM ${hasImages ? "vision" : "text"} analysis failed`, analysisError);
     }
 
-    const [textOutcome, imageOutcome] = await Promise.allSettled([textPromise, imagePromise]);
-    const textResult = textOutcome.status === "fulfilled" ? textOutcome.value : null;
-    const imageResult = imageOutcome.status === "fulfilled" ? imageOutcome.value : null;
-    if (textOutcome.status === "rejected") {
-      console.error("[OceanArchive] GLM text analysis failed", textOutcome.reason);
-    }
-    if (imageOutcome.status === "rejected") {
-      console.error("[OceanArchive] GLM vision analysis failed", imageOutcome.reason);
-    }
     return NextResponse.json({
-      textAnalysis: textResult ?? localTextAnalysis(title, body),
-      imageAnalysis: analyzeImages ? imageResult ?? localImageAnalysis() : undefined,
-      mode: textResult || imageResult ? "glm" : "local-preview",
-      warnings: [
-        textOutcome.status === "rejected" ? "文本分析暂时使用本地解读" : null,
-        analyzeImages && imageOutcome.status === "rejected" ? "图片分析暂时使用本地解读" : null,
-      ].filter(Boolean),
+      aiAnalysis: aiResult ?? localCombinedAnalysis(title, body, hasImages),
+      mode: aiResult ? "glm" : "local-preview",
+      warnings: aiResult ? [] : [hasImages ? "图片综合分析暂时使用本地解读" : "文本分析暂时使用本地解读"],
     });
   } catch (error) {
     return NextResponse.json(

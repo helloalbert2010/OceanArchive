@@ -15,7 +15,9 @@ export type Post = {
   likes: number;
   liked?: boolean;
   createdAt: string;
-  textAnalysis: string;
+  aiAnalysis: string;
+  /** Legacy fields kept only while reading old local data. */
+  textAnalysis?: string;
   imageAnalysis?: string;
   comments: Comment[];
 };
@@ -25,5 +27,4 @@ export type CreatePostInput = {
   title: string;
   body: string;
   images: File[];
-  analyzeImages: boolean;
 };

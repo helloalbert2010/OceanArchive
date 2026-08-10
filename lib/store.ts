@@ -90,7 +90,12 @@ async function resolveLocalImage(image: string) {
 }
 
 async function hydrateLocalPost(post: Post): Promise<Post> {
-  return { ...post, images: (await Promise.all(post.images.map(resolveLocalImage))).filter(Boolean) };
+  const legacyAnalysis = [post.textAnalysis, post.imageAnalysis].filter(Boolean).join(" ");
+  return {
+    ...post,
+    aiAnalysis: post.aiAnalysis || legacyAnalysis || "这篇记录暂时没有 AI 分析。",
+    images: (await Promise.all(post.images.map(resolveLocalImage))).filter(Boolean),
+  };
 }
 
 async function removeLocalImages(images: string[]) {
@@ -115,8 +120,7 @@ function mapRow(row: PostRow): Post {
     images: row.images ?? [],
     likes: row.likes,
     createdAt: row.created_at,
-    textAnalysis: row.text_analysis,
-    imageAnalysis: row.image_analysis ?? undefined,
+    aiAnalysis: row.text_analysis,
     comments: (row.comments ?? []).map((comment) => ({
       id: comment.id,
       postId: comment.post_id,
@@ -172,7 +176,7 @@ async function uploadImages(files: File[]) {
 
 export async function createPost(
   input: CreatePostInput,
-  analyses: { textAnalysis: string; imageAnalysis?: string },
+  analyses: { aiAnalysis: string },
 ): Promise<Post> {
   const images = await uploadImages(input.images);
   const now = new Date().toISOString();
@@ -184,8 +188,7 @@ export async function createPost(
     images,
     likes: 0,
     createdAt: now,
-    textAnalysis: analyses.textAnalysis,
-    imageAnalysis: analyses.imageAnalysis,
+    aiAnalysis: analyses.aiAnalysis,
     comments: [],
   };
 
@@ -204,8 +207,8 @@ export async function createPost(
       body: post.body,
       images: post.images,
       likes: 0,
-      text_analysis: post.textAnalysis,
-      image_analysis: post.imageAnalysis ?? null,
+      text_analysis: post.aiAnalysis,
+      image_analysis: null,
     })
     .select()
     .single();

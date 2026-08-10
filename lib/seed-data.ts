@@ -95,6 +95,7 @@ export const seedPosts: Post[] = Array.from({ length: 30 }, (_, index) => {
     likes: 36 + ((index * 17) % 153),
     createdAt,
     textAnalysis: story.textAnalysis,
+    aiAnalysis: [story.textAnalysis, story.imageAnalysis].filter(Boolean).join(" "),
     imageAnalysis: story.imageAnalysis,
     comments: Array.from({ length: 1 + (index % 3) }, (_, commentIndex) => ({
       id: `${id}-comment-${commentIndex + 1}`,

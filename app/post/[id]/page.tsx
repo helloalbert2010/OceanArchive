@@ -92,8 +92,7 @@ export default function PostDetailPage() {
         </div>
 
         <div className="analysis-stack">
-          <AiAnalysis type="text">{post.textAnalysis}</AiAnalysis>
-          {post.imageAnalysis && <AiAnalysis type="image">{post.imageAnalysis}</AiAnalysis>}
+          <AiAnalysis hasImages={post.images.length > 0}>{post.aiAnalysis}</AiAnalysis>
         </div>
       </article>
 
