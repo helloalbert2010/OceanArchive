@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-打开 `http://localhost:3000`。未配置 Supabase 时会使用浏览器本地存储，并自动生成 30 条演示记录。
+打开 `http://localhost:3000`。本地开发未配置 Supabase 时会使用浏览器本地存储，并自动生成 30 条演示记录。生产环境未配置 Supabase 时只展示演示记录，并禁用发布、点赞和评论，避免内容只保存在单台设备上。
 
 ## 环境变量
 

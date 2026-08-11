@@ -1,7 +1,7 @@
 "use client";
 
 import { seedPosts } from "@/lib/seed-data";
-import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabaseClient, isLocalDemoMode, isSupabaseConfigured } from "@/lib/supabase";
 import type { Comment, CreatePostInput, Post } from "@/lib/types";
 
 const STORAGE_KEY = "ocean-archive-posts-v1";
@@ -9,6 +9,7 @@ const DATA_EVENT = "ocean-archive-data";
 const MEDIA_DB = "ocean-archive-media";
 const MEDIA_STORE = "images";
 const MEDIA_PREFIX = "indexeddb://";
+const CLOUD_UNAVAILABLE_ERROR = "云端数据库未连接，当前无法公开发布，请联系管理员检查部署配置。";
 
 type PostRow = {
   id: string;
@@ -133,7 +134,10 @@ function mapRow(row: PostRow): Post {
 
 export async function listPosts(): Promise<Post[]> {
   const supabase = getSupabaseClient();
-  if (!supabase) return Promise.all(readLocalPosts().map(hydrateLocalPost));
+  if (!supabase) {
+    const posts = isLocalDemoMode ? readLocalPosts() : seedPosts;
+    return Promise.all(posts.map(hydrateLocalPost));
+  }
 
   const { data, error } = await supabase
     .from("posts")
@@ -146,7 +150,8 @@ export async function listPosts(): Promise<Post[]> {
 export async function getPost(id: string): Promise<Post | null> {
   const supabase = getSupabaseClient();
   if (!supabase) {
-    const post = readLocalPosts().find((item) => item.id === id);
+    const posts = isLocalDemoMode ? readLocalPosts() : seedPosts;
+    const post = posts.find((item) => item.id === id);
     return post ? hydrateLocalPost(post) : null;
   }
 
@@ -161,7 +166,10 @@ export async function getPost(id: string): Promise<Post | null> {
 
 async function uploadImages(files: File[]) {
   const supabase = getSupabaseClient();
-  if (!supabase) return Promise.all(files.map(saveLocalImage));
+  if (!supabase) {
+    if (!isLocalDemoMode) throw new Error(CLOUD_UNAVAILABLE_ERROR);
+    return Promise.all(files.map(saveLocalImage));
+  }
 
   return Promise.all(
     files.map(async (file) => {
@@ -178,6 +186,7 @@ export async function createPost(
   input: CreatePostInput,
   analyses: { aiAnalysis: string },
 ): Promise<Post> {
+  if (!getSupabaseClient() && !isLocalDemoMode) throw new Error(CLOUD_UNAVAILABLE_ERROR);
   const images = await uploadImages(input.images);
   const now = new Date().toISOString();
   const post: Post = {
@@ -219,6 +228,7 @@ export async function createPost(
 export async function toggleLike(id: string) {
   const localPosts = !isSupabaseConfigured ? readLocalPosts() : null;
   if (localPosts) {
+    if (!isLocalDemoMode) throw new Error(CLOUD_UNAVAILABLE_ERROR);
     let result: Post | null = null;
     const next = localPosts.map((post) => {
       if (post.id !== id) return post;
@@ -252,6 +262,7 @@ export async function addComment(postId: string, body: string, author = "海上�
 
   const supabase = getSupabaseClient();
   if (!supabase) {
+    if (!isLocalDemoMode) throw new Error(CLOUD_UNAVAILABLE_ERROR);
     writeLocalPosts(
       readLocalPosts().map((post) =>
         post.id === postId ? { ...post, comments: [...post.comments, comment] } : post,
@@ -273,6 +284,7 @@ export async function addComment(postId: string, body: string, author = "海上�
 export async function deletePost(id: string) {
   const supabase = getSupabaseClient();
   if (!supabase) {
+    if (!isLocalDemoMode) throw new Error(CLOUD_UNAVAILABLE_ERROR);
     const posts = readLocalPosts();
     const target = posts.find((post) => post.id === id);
     if (target) await removeLocalImages(target.images);

@@ -1,6 +1,7 @@
 "use client";
 
 import { createPost } from "@/lib/store";
+import { isLocalDemoMode, isSupabaseConfigured } from "@/lib/supabase";
 import type { CreatePostInput } from "@/lib/types";
 import { ArrowLeft, ImagePlus, LoaderCircle, Send, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -33,6 +34,7 @@ export default function CreatePage() {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [stage, setStage] = useState<"idle" | "analyzing" | "saving">("idle");
+  const publishingAvailable = isSupabaseConfigured || isLocalDemoMode;
 
   const previews = useMemo(() => images.map((file) => URL.createObjectURL(file)), [images]);
   useEffect(() => () => previews.forEach(URL.revokeObjectURL), [previews]);
@@ -59,6 +61,10 @@ export default function CreatePage() {
     event.preventDefault();
     if (!title.trim() || !author.trim() || !body.trim()) {
       setError("请填写标题、昵称和故事正文。");
+      return;
+    }
+    if (!publishingAvailable) {
+      setError("云端数据库未连接，当前无法公开发布，请联系管理员检查部署配置。");
       return;
     }
     setError("");
@@ -158,13 +164,16 @@ export default function CreatePage() {
 
           <div className="ai-toggle ai-summary-note">
             <span className="ai-note-icon"><Sparkles /></span>
-            <span className="toggle-copy"><strong>AI 综合分析</strong><small>发布后，AI 会结合故事与全部影像生成一条综合评论；没有图片时则基于故事内容分析。</small></span>
+            <span className="toggle-copy"><strong>AI 综合分析</strong><small>发布后，AI 会分别分析文字与全部影像，再综合生成一条评论；没有图片时则基于故事内容分析。</small></span>
           </div>
 
-          {error && <div className="form-error">{error}</div>}
+          {!publishingAvailable && (
+            <div className="form-error">云端数据库未连接，发布功能暂时不可用。</div>
+          )}
+          {error && publishingAvailable && <div className="form-error">{error}</div>}
           <div className="form-submit-row">
             <span>发布即表示你同意将这段记录公开分享。</span>
-            <button className="primary-button publish-button" type="submit" disabled={busy}>
+            <button className="primary-button publish-button" type="submit" disabled={busy || !publishingAvailable}>
               {busy ? <LoaderCircle className="spin" /> : <Send />}
               {stage === "analyzing" ? "AI 正在分析" : stage === "saving" ? "正在保存" : "发布航海故事"}
             </button>
