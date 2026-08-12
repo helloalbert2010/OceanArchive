@@ -299,6 +299,32 @@ export async function deletePost(id: string) {
   }
 }
 
+export async function updatePostLikes(id: string, likes: number) {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    if (!isLocalDemoMode) throw new Error(CLOUD_UNAVAILABLE_ERROR);
+    let updated: Post | null = null;
+    writeLocalPosts(
+      readLocalPosts().map((post) => {
+        if (post.id !== id) return post;
+        updated = { ...post, likes };
+        return updated;
+      }),
+    );
+    if (!updated) throw new Error("没有找到这篇记录");
+    return hydrateLocalPost(updated);
+  }
+
+  const response = await fetch(`/api/admin/posts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ likes }),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(result?.error ?? "点赞数保存失败");
+  return likes;
+}
+
 export function subscribeToDataChanges(listener: () => void) {
   window.addEventListener(DATA_EVENT, listener);
   window.addEventListener("storage", listener);
