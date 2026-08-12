@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SquarePen } from "lucide-react";
 
-export function Hero() {
+export function Hero({ postCount, loading }: { postCount: number; loading: boolean }) {
   return (
     <section className="hero">
       <div className="hero-overlay" />
@@ -11,7 +11,9 @@ export function Hero() {
         <p>每一次出海，都是一份关于地球的现场记录。</p>
         <Link href="/create" className="hero-button"><SquarePen /> 分享你的故事</Link>
       </div>
-      <div className="hero-note"><span>30</span> 篇海上记录正在汇聚</div>
+      <div className="hero-note" aria-live="polite">
+        <span>{loading ? "-" : postCount}</span> 篇海上记录正在汇聚
+      </div>
     </section>
   );
 }

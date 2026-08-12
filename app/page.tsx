@@ -32,7 +32,7 @@ export default function HomePage() {
 
   return (
     <main className="page-shell home-shell">
-      <Hero />
+      <Hero postCount={posts.length} loading={loading} />
       <div className="feed-heading">
         <div>
           <span className="section-kicker">LATEST LOGS</span>
