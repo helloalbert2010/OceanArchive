@@ -48,15 +48,12 @@ img { display: block; max-width: 100%; }
 }
 .brand { display: inline-flex; align-items: center; gap: 11px; font-size: 19px; font-weight: 760; }
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  color: white;
-  background: var(--navy);
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
   border-radius: 50%;
 }
-.brand-mark svg { width: 20px; }
+.brand-mark img { width: 100%; height: 100%; object-fit: cover; }
 .primary-button, .secondary-button, .danger-button {
   min-height: 42px;
   padding: 0 17px;
@@ -121,7 +118,7 @@ img { display: block; max-width: 100%; }
 .avatar-sm { width: 34px; height: 34px; }
 .avatar-md { width: 43px; height: 43px; }
 .avatar-lg { width: 50px; height: 50px; }
-.avatar svg { width: 57%; height: 57%; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
 .post-author { display: flex; min-width: 0; flex-direction: column; line-height: 1.35; }
 .post-author strong { font-size: 14px; }
 .post-author span { color: var(--muted); font-size: 12px; }

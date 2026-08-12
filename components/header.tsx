@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Sailboat, SquarePen } from "lucide-react";
+import Image from "next/image";
+import { SquarePen } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 export function Header() {
@@ -12,7 +13,7 @@ export function Header() {
     <header className="site-header">
       <div className="header-inner">
         <Link href="/" className="brand" aria-label="OceanArchive 首页">
-          <span className="brand-mark"><Sailboat /></span>
+          <span className="brand-mark"><Image src="/brand-logo.png" alt="" width={40} height={40} priority /></span>
           <span>OceanArchive</span>
         </Link>
         {showCreate && (
